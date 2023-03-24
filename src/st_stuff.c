@@ -868,7 +868,7 @@ static void ST_drawLivesArea(void)
 		}
 	}
 	// Team name
-	else if (G_GametypeHasTeams())
+	else if (G_GametypeHasTeams() && !(gametyperules & GTR_LIVES))
 	{
 		if (stplyr->ctfteam == 1)
 		{
@@ -1003,6 +1003,9 @@ static void ST_drawInput(void)
 
 	if (stplyr->powers[pw_carry] == CR_NIGHTSMODE)
 		y -= 16;
+
+	else if (cv_showinputdisplay.value && (!modeattacking && LUA_HudEnabled(hud_lives)))
+		y -= (G_RingSlingerGametype() && LUA_HudEnabled(hud_powerstones)) ? 29 : 24;
 
 	if (F_GetPromptHideHud(y))
 		return;
@@ -2763,7 +2766,7 @@ static void ST_overlayDrawer(void)
 	if (!hu_showscores && (netgame || multiplayer) && LUA_HudEnabled(hud_textspectator))
 		ST_drawTextHUD();
 
-	if (modeattacking && !(demoplayback && hu_showscores))
+	if ((cv_showinputdisplay.value  && (!players[displayplayer].spectator)) || (modeattacking && !(demoplayback && hu_showscores)))
 		ST_drawInput();
 
 	ST_drawDebugInfo();

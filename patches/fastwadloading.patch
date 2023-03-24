@@ -1,0 +1,753 @@
+From 432f691852e256d00487a4cea32c308d2b365a96 Mon Sep 17 00:00:00 2001
+From: James R <justsomejames2@gmail.com>
+Date: Tue, 14 Dec 2021 23:19:45 -0800
+Subject: [PATCH 1/5] Free unused texture lumps in R_LoadTextures
+
+PU_CACHE never gets freed automatically and Z_Unlock does
+NOTHING.
+---
+ src/r_textures.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/r_textures.c b/src/r_textures.c
+index 793e5237f..86e8ae43c 100644
+--- a/src/r_textures.c
++++ b/src/r_textures.c
+@@ -814,7 +814,7 @@ Rloadflats (INT32 i, INT32 w)
+ 			patch->lump = texstart + j;
+ 			patch->flip = 0;
+ 
+-			Z_Unlock(flatlump);
++			Z_Free(flatlump);
+ 
+ 			texturewidth[i] = texture->width;
+ 			textureheight[i] = texture->height << FRACBITS;
+@@ -915,7 +915,7 @@ Rloadtextures (INT32 i, INT32 w)
+ 			patch->lump = texstart + j;
+ 			patch->flip = 0;
+ 
+-			Z_Unlock(patchlump);
++			Z_Free(patchlump);
+ 
+ 			texturewidth[i] = texture->width;
+ 			textureheight[i] = texture->height << FRACBITS;
+-- 
+GitLab
+
+
+From 571e4753948b6297b55238962dd8bea6b5e5be62 Mon Sep 17 00:00:00 2001
+From: James R <justsomejames2@gmail.com>
+Date: Wed, 15 Dec 2021 14:02:56 -0800
+Subject: [PATCH 2/5] Read only header bytes when creating textures list
+
+R_LoadTextures was reading in the entirety of every
+texture lump, now it only reads the 8 byte PNG header.
+This saved more than 1 second for me (1.68 s -> 0.24 s).
+
+PNG still need to be read in entirely to check their
+dimensions; I didn't bother looking into optimizing it
+since we don't have many PNG textures right now.
+---
+ src/r_picformats.h |  1 +
+ src/r_textures.c   | 26 +++++++++++++-------------
+ 2 files changed, 14 insertions(+), 13 deletions(-)
+
+diff --git a/src/r_picformats.h b/src/r_picformats.h
+index c74f8a13a..73010e092 100644
+--- a/src/r_picformats.h
++++ b/src/r_picformats.h
+@@ -105,6 +105,7 @@ typedef struct
+ } spriteinfo_t;
+ 
+ // Portable Network Graphics
++#define PNG_HEADER_SIZE (8)
+ boolean Picture_IsLumpPNG(const UINT8 *d, size_t s);
+ #define Picture_ThrowPNGError(lumpname, wadfilename) I_Error("W_Wad: Lump \"%s\" in file \"%s\" is a .png - please convert to either Doom or Flat (raw) image format.", lumpname, wadfilename); // Fears Of LJ Sonic
+ 
+diff --git a/src/r_textures.c b/src/r_textures.c
+index 86e8ae43c..117192526 100644
+--- a/src/r_textures.c
++++ b/src/r_textures.c
+@@ -725,6 +725,7 @@ Rloadflats (INT32 i, INT32 w)
+ 	UINT16 texstart, texend;
+ 	texture_t *texture;
+ 	texpatch_t *patch;
++	UINT8 header[PNG_HEADER_SIZE];
+ 
+ 	// Yes
+ 	if (W_FileHasFolders(wadfiles[w]))
+@@ -743,7 +744,6 @@ Rloadflats (INT32 i, INT32 w)
+ 		// Work through each lump between the markers in the WAD.
+ 		for (j = 0; j < (texend - texstart); j++)
+ 		{
+-			UINT8 *flatlump;
+ 			UINT16 wadnum = (UINT16)w;
+ 			lumpnum_t lumpnum = texstart + j;
+ 			size_t lumplength;
+@@ -755,7 +755,7 @@ Rloadflats (INT32 i, INT32 w)
+ 					continue; // If it is then SKIP IT
+ 			}
+ 
+-			flatlump = W_CacheLumpNumPwad(wadnum, lumpnum, PU_CACHE);
++			W_ReadLumpHeaderPwad(wadnum, lumpnum, header, sizeof header, 0);
+ 			lumplength = W_LumpLengthPwad(wadnum, lumpnum);
+ 
+ 			switch (lumplength)
+@@ -790,12 +790,14 @@ Rloadflats (INT32 i, INT32 w)
+ 			M_Memcpy(texture->name, W_CheckNameForNumPwad(wadnum, lumpnum), sizeof(texture->name));
+ 
+ #ifndef NO_PNG_LUMPS
+-			if (Picture_IsLumpPNG((UINT8 *)flatlump, lumplength))
++			if (Picture_IsLumpPNG(header, lumplength))
+ 			{
++				UINT8 *flatlump = W_CacheLumpNumPwad(wadnum, lumpnum, PU_CACHE);
+ 				INT32 width, height;
+ 				Picture_PNGDimensions((UINT8 *)flatlump, &width, &height, NULL, NULL, lumplength);
+ 				texture->width = (INT16)width;
+ 				texture->height = (INT16)height;
++				Z_Free(flatlump);
+ 			}
+ 			else
+ #endif
+@@ -814,8 +816,6 @@ Rloadflats (INT32 i, INT32 w)
+ 			patch->lump = texstart + j;
+ 			patch->flip = 0;
+ 
+-			Z_Free(flatlump);
+-
+ 			texturewidth[i] = texture->width;
+ 			textureheight[i] = texture->height << FRACBITS;
+ 			i++;
+@@ -835,8 +835,8 @@ Rloadtextures (INT32 i, INT32 w)
+ 	UINT16 j;
+ 	UINT16 texstart, texend, texturesLumpPos;
+ 	texture_t *texture;
+-	softwarepatch_t *patchlump;
+ 	texpatch_t *patch;
++	softwarepatch_t patchlump;
+ 
+ 	// Get the lump numbers for the markers in the WAD, if they exist.
+ 	if (W_FileHasFolders(wadfiles[w]))
+@@ -876,7 +876,7 @@ Rloadtextures (INT32 i, INT32 w)
+ 					continue; // If it is then SKIP IT
+ 			}
+ 
+-			patchlump = W_CacheLumpNumPwad(wadnum, lumpnum, PU_CACHE);
++			W_ReadLumpHeaderPwad(wadnum, lumpnum, &patchlump, PNG_HEADER_SIZE, 0);
+ #ifndef NO_PNG_LUMPS
+ 			lumplength = W_LumpLengthPwad(wadnum, lumpnum);
+ #endif
+@@ -888,18 +888,20 @@ Rloadtextures (INT32 i, INT32 w)
+ 			M_Memcpy(texture->name, W_CheckNameForNumPwad(wadnum, lumpnum), sizeof(texture->name));
+ 
+ #ifndef NO_PNG_LUMPS
+-			if (Picture_IsLumpPNG((UINT8 *)patchlump, lumplength))
++			if (Picture_IsLumpPNG((UINT8 *)&patchlump, lumplength))
+ 			{
++				UINT8 *png = W_CacheLumpNumPwad(wadnum, lumpnum, PU_CACHE);
+ 				INT32 width, height;
+-				Picture_PNGDimensions((UINT8 *)patchlump, &width, &height, NULL, NULL, lumplength);
++				Picture_PNGDimensions(png, &width, &height, NULL, NULL, lumplength);
+ 				texture->width = (INT16)width;
+ 				texture->height = (INT16)height;
++				Z_Free(png);
+ 			}
+ 			else
+ #endif
+ 			{
+-				texture->width = SHORT(patchlump->width);
+-				texture->height = SHORT(patchlump->height);
++				texture->width = SHORT(patchlump.width);
++				texture->height = SHORT(patchlump.height);
+ 			}
+ 
+ 			texture->type = TEXTURETYPE_SINGLEPATCH;
+@@ -915,8 +917,6 @@ Rloadtextures (INT32 i, INT32 w)
+ 			patch->lump = texstart + j;
+ 			patch->flip = 0;
+ 
+-			Z_Free(patchlump);
+-
+ 			texturewidth[i] = texture->width;
+ 			textureheight[i] = texture->height << FRACBITS;
+ 			i++;
+-- 
+GitLab
+
+
+From 2ebec5356187a17e01fe06e5c7c026ffd0c4c4bc Mon Sep 17 00:00:00 2001
+From: James R <justsomejames2@gmail.com>
+Date: Thu, 16 Dec 2021 18:34:51 -0800
+Subject: [PATCH 3/5] P_AddWadFile: only load textures in current file
+
+---
+ src/p_setup.c    |   2 +-
+ src/r_textures.c | 221 +++++++++++++++++++++++++++--------------------
+ src/r_textures.h |   1 +
+ 3 files changed, 129 insertions(+), 95 deletions(-)
+
+diff --git a/src/p_setup.c b/src/p_setup.c
+index 4f21922a0..5d70daeec 100644
+--- a/src/p_setup.c
++++ b/src/p_setup.c
+@@ -4722,7 +4722,7 @@ static boolean P_LoadAddon(UINT16 wadnum, UINT16 numlumps)
+ 	// Reload it all anyway, just in case they
+ 	// added some textures but didn't insert a
+ 	// TEXTURES/etc. list.
+-	R_LoadTextures(); // numtexture changes
++	R_LoadTexturesPwad(wadnum); // numtexture changes
+ 
+ 	// Reload ANIMDEFS
+ 	P_InitPicAnims();
+diff --git a/src/r_textures.c b/src/r_textures.c
+index 117192526..a53c2e738 100644
+--- a/src/r_textures.c
++++ b/src/r_textures.c
+@@ -926,28 +926,54 @@ Rloadtextures (INT32 i, INT32 w)
+ 	return i;
+ }
+ 
+-//
+-// R_LoadTextures
+-// Initializes the texture list with the textures from the world map.
+-//
+-void R_LoadTextures(void)
++static INT32
++count_range
++(		const char * marker_start,
++		const char * marker_end,
++		const char * folder,
++		UINT16 wadnum)
+ {
+-	INT32 i, w;
+ 	UINT16 j;
+-	UINT16 texstart, texend, texturesLumpPos;
++	UINT16 texstart, texend;
++	INT32 count = 0;
+ 
+-	// Free previous memory before numtextures change.
+-	if (numtextures)
++	// Count flats
++	if (W_FileHasFolders(wadfiles[wadnum]))
+ 	{
+-		for (i = 0; i < numtextures; i++)
++		texstart = W_CheckNumForFolderStartPK3(folder, wadnum, 0);
++		texend = W_CheckNumForFolderEndPK3(folder, wadnum, texstart);
++	}
++	else
++	{
++		texstart = W_CheckNumForMarkerStartPwad(marker_start, wadnum, 0);
++		texend = W_CheckNumForNamePwad(marker_end, wadnum, texstart);
++	}
++
++	if (texstart != INT16_MAX && texend != INT16_MAX)
++	{
++		// PK3s have subfolders, so we can't just make a simple sum
++		if (W_FileHasFolders(wadfiles[wadnum]))
+ 		{
+-			Z_Free(textures[i]);
+-			Z_Free(texturecache[i]);
++			for (j = texstart; j < texend; j++)
++			{
++				if (!W_IsLumpFolder(wadnum, j)) // Check if lump is a folder; if not, then count it
++					count++;
++			}
++		}
++		else // Add all the textures between markers
++		{
++			count += (texend - texstart);
+ 		}
+-		Z_Free(texturetranslation);
+-		Z_Free(textures);
+ 	}
+ 
++	return count;
++}
++
++static INT32 R_CountTextures(UINT16 wadnum)
++{
++	UINT16 texturesLumpPos;
++	INT32 count = 0;
++
+ 	// Load patches and textures.
+ 
+ 	// Get the number of textures to check.
+@@ -955,106 +981,76 @@ void R_LoadTextures(void)
+ 	// the markers.
+ 	// This system will allocate memory for all duplicate/patched textures even if it never uses them,
+ 	// but the alternative is to spend a ton of time checking and re-checking all previous entries just to skip any potentially patched textures.
+-	for (w = 0, numtextures = 0; w < numwadfiles; w++)
+-	{
++
+ #ifdef WALLFLATS
+-		// Count flats
+-		if (W_FileHasFolders(wadfiles[w]))
+-		{
+-			texstart = W_CheckNumForFolderStartPK3("flats/", (UINT16)w, 0);
+-			texend = W_CheckNumForFolderEndPK3("flats/", (UINT16)w, texstart);
+-		}
+-		else
+-		{
+-			texstart = W_CheckNumForMarkerStartPwad("F_START", (UINT16)w, 0);
+-			texend = W_CheckNumForNamePwad("F_END", (UINT16)w, texstart);
+-		}
++	count += count_range("F_START", "F_END", "flats/", wadnum);
++#endif
+ 
+-		if (!( texstart == INT16_MAX || texend == INT16_MAX ))
+-		{
+-			// PK3s have subfolders, so we can't just make a simple sum
+-			if (W_FileHasFolders(wadfiles[w]))
+-			{
+-				for (j = texstart; j < texend; j++)
+-				{
+-					if (!W_IsLumpFolder((UINT16)w, j)) // Check if lump is a folder; if not, then count it
+-						numtextures++;
+-				}
+-			}
+-			else // Add all the textures between F_START and F_END
+-			{
+-				numtextures += (UINT32)(texend - texstart);
+-			}
+-		}
+-#endif/*WALLFLATS*/
++	// Count the textures from TEXTURES lumps
++	texturesLumpPos = W_CheckNumForNamePwad("TEXTURES", wadnum, 0);
+ 
+-		// Count the textures from TEXTURES lumps
+-		texturesLumpPos = W_CheckNumForNamePwad("TEXTURES", (UINT16)w, 0);
+-		while (texturesLumpPos != INT16_MAX)
+-		{
+-			numtextures += R_CountTexturesInTEXTURESLump((UINT16)w, (UINT16)texturesLumpPos);
+-			texturesLumpPos = W_CheckNumForNamePwad("TEXTURES", (UINT16)w, texturesLumpPos + 1);
+-		}
++	while (texturesLumpPos != INT16_MAX)
++	{
++		count += R_CountTexturesInTEXTURESLump(wadnum, texturesLumpPos);
++		texturesLumpPos = W_CheckNumForNamePwad("TEXTURES", wadnum, texturesLumpPos + 1);
++	}
+ 
+-		// Count single-patch textures
+-		if (W_FileHasFolders(wadfiles[w]))
+-		{
+-			texstart = W_CheckNumForFolderStartPK3("textures/", (UINT16)w, 0);
+-			texend = W_CheckNumForFolderEndPK3("textures/", (UINT16)w, texstart);
+-		}
+-		else
+-		{
+-			texstart = W_CheckNumForMarkerStartPwad(TX_START, (UINT16)w, 0);
+-			texend = W_CheckNumForNamePwad(TX_END, (UINT16)w, 0);
+-		}
++	// Count single-patch textures
++	count += count_range(TX_START, TX_END, "textures/", wadnum);
+ 
+-		if (texstart == INT16_MAX || texend == INT16_MAX)
+-			continue;
++	return count;
++}
+ 
+-		// PK3s have subfolders, so we can't just make a simple sum
+-		if (W_FileHasFolders(wadfiles[w]))
+-		{
+-			for (j = texstart; j < texend; j++)
+-			{
+-				if (!W_IsLumpFolder((UINT16)w, j)) // Check if lump is a folder; if not, then count it
+-					numtextures++;
+-			}
+-		}
+-		else // Add all the textures between TX_START and TX_END
+-		{
+-			numtextures += (UINT32)(texend - texstart);
+-		}
+-	}
++static void
++recallocuser
++(		void * user,
++		size_t old,
++		size_t new)
++{
++	char *p = Z_Realloc(*(void**)user,
++			new, PU_STATIC, user);
+ 
+-	// If no textures found by this point, bomb out
+-	if (!numtextures)
+-		I_Error("No textures detected in any WADs!\n");
++	if (new > old)
++		memset(&p[old], 0, (new - old));
++}
++
++static void R_AllocateTextures(INT32 add)
++{
++	const INT32 newtextures = (numtextures + add);
++	const size_t newsize = newtextures * sizeof (void*);
++	const size_t oldsize = numtextures * sizeof (void*);
++
++	INT32 i;
+ 
+ 	// Allocate memory and initialize to 0 for all the textures we are initialising.
+-	// There are actually 5 buffers allocated in one for convenience.
+-	textures = Z_Calloc((numtextures * sizeof(void *)) * 5, PU_STATIC, NULL);
++	recallocuser(&textures, oldsize, newsize);
+ 
+ 	// Allocate texture column offset table.
+-	texturecolumnofs = (void *)((UINT8 *)textures + (numtextures * sizeof(void *)));
++	recallocuser(&texturecolumnofs, oldsize, newsize);
+ 	// Allocate texture referencing cache.
+-	texturecache     = (void *)((UINT8 *)textures + ((numtextures * sizeof(void *)) * 2));
++	recallocuser(&texturecache, oldsize, newsize);
+ 	// Allocate texture width table.
+-	texturewidth     = (void *)((UINT8 *)textures + ((numtextures * sizeof(void *)) * 3));
++	recallocuser(&texturewidth, oldsize, newsize);
+ 	// Allocate texture height table.
+-	textureheight    = (void *)((UINT8 *)textures + ((numtextures * sizeof(void *)) * 4));
++	recallocuser(&textureheight, oldsize, newsize);
+ 	// Create translation table for global animation.
+-	texturetranslation = Z_Malloc((numtextures + 1) * sizeof(*texturetranslation), PU_STATIC, NULL);
++	Z_Realloc(texturetranslation, (newtextures + 1) * sizeof(*texturetranslation), PU_STATIC, &texturetranslation);
+ 
+-	for (i = 0; i < numtextures; i++)
++	for (i = numtextures; i < newtextures; ++i)
+ 		texturetranslation[i] = i;
++}
+ 
+-	for (i = 0, w = 0; w < numwadfiles; w++)
+-	{
++static INT32 R_DefineTextures(INT32 i, UINT16 w)
++{
+ #ifdef WALLFLATS
+-		i = Rloadflats(i, w);
++	i = Rloadflats(i, w);
+ #endif
+-		i = Rloadtextures(i, w);
+-	}
++	return Rloadtextures(i, w);
++}
++
++static void R_FinishLoadingTextures(INT32 add)
++{
++	numtextures += add;
+ 
+ #ifdef HWRENDER
+ 	if (rendermode == render_opengl)
+@@ -1062,6 +1058,43 @@ void R_LoadTextures(void)
+ #endif
+ }
+ 
++//
++// R_LoadTextures
++// Initializes the texture list with the textures from the world map.
++//
++void R_LoadTextures(void)
++{
++	INT32 i, w;
++	INT32 newtextures = 0;
++
++	for (w = 0; w < numwadfiles; w++)
++	{
++		newtextures += R_CountTextures((UINT16)w);
++	}
++
++	// If no textures found by this point, bomb out
++	if (!newtextures)
++		I_Error("No textures detected in any WADs!\n");
++
++	R_AllocateTextures(newtextures);
++
++	for (i = 0, w = 0; w < numwadfiles; w++)
++	{
++		i = R_DefineTextures(i, w);
++	}
++
++	R_FinishLoadingTextures(newtextures);
++}
++
++void R_LoadTexturesPwad(UINT16 wadnum)
++{
++	INT32 newtextures = R_CountTextures(wadnum);
++
++	R_AllocateTextures(newtextures);
++	R_DefineTextures(numtextures, wadnum);
++	R_FinishLoadingTextures(newtextures);
++}
++
+ static texpatch_t *R_ParsePatch(boolean actuallyLoadPatch)
+ {
+ 	char *texturesToken;
+diff --git a/src/r_textures.h b/src/r_textures.h
+index dd286b6ac..95796d89c 100644
+--- a/src/r_textures.h
++++ b/src/r_textures.h
+@@ -76,6 +76,7 @@ extern UINT8 **texturecache; // graphics data for each generated full-size textu
+ 
+ // Load TEXTURES definitions, create lookup tables
+ void R_LoadTextures(void);
++void R_LoadTexturesPwad(UINT16 wadnum);
+ void R_FlushTextureCache(void);
+ 
+ // Texture generation
+-- 
+GitLab
+
+
+From 2aec4501eb4c742ba7830c2cce16bd64db7ac55d Mon Sep 17 00:00:00 2001
+From: James R <justsomejames2@gmail.com>
+Date: Thu, 16 Dec 2021 22:10:36 -0800
+Subject: [PATCH 4/5] Hash name lookup for textures and lumps
+
+---
+ src/doomdef.h    | 16 ++++++++++++++++
+ src/r_textures.c | 12 ++++++++++--
+ src/r_textures.h |  1 +
+ src/w_wad.c      | 19 ++++++++++++++++---
+ src/w_wad.h      |  1 +
+ 5 files changed, 44 insertions(+), 5 deletions(-)
+
+diff --git a/src/doomdef.h b/src/doomdef.h
+index 7e7e35599..e1a7a247a 100644
+--- a/src/doomdef.h
++++ b/src/doomdef.h
+@@ -530,6 +530,22 @@ extern boolean capslock;
+ // i_system.c, replace getchar() once the keyboard has been appropriated
+ INT32 I_GetKey(void);
+ 
++/* http://www.cse.yorku.ca/~oz/hash.html */
++static inline
++UINT32 quickncasehash (const char *p, size_t n)
++{
++	size_t i = 0;
++	UINT32 x = 5381;
++
++	while (i < n && p[i])
++	{
++		x = (x * 33) ^ tolower(p[i]);
++		i++;
++	}
++
++	return x;
++}
++
+ #ifndef min // Double-Check with WATTCP-32's cdefs.h
+ #define min(x, y) (((x) < (y)) ? (x) : (y))
+ #endif
+diff --git a/src/r_textures.c b/src/r_textures.c
+index a53c2e738..645a57b9b 100644
+--- a/src/r_textures.c
++++ b/src/r_textures.c
+@@ -59,6 +59,7 @@ INT32 *texturetranslation;
+ // Painfully simple texture id cacheing to make maps load faster. :3
+ static struct {
+ 	char name[9];
++	UINT32 hash;
+ 	INT32 id;
+ } *tidcache = NULL;
+ static INT32 tidcachelen = 0;
+@@ -788,6 +789,7 @@ Rloadflats (INT32 i, INT32 w)
+ 
+ 			// Set texture properties.
+ 			M_Memcpy(texture->name, W_CheckNameForNumPwad(wadnum, lumpnum), sizeof(texture->name));
++			texture->hash = quickncasehash(texture->name, 8);
+ 
+ #ifndef NO_PNG_LUMPS
+ 			if (Picture_IsLumpPNG(header, lumplength))
+@@ -886,6 +888,7 @@ Rloadtextures (INT32 i, INT32 w)
+ 
+ 			// Set texture properties.
+ 			M_Memcpy(texture->name, W_CheckNameForNumPwad(wadnum, lumpnum), sizeof(texture->name));
++			texture->hash = quickncasehash(texture->name, 8);
+ 
+ #ifndef NO_PNG_LUMPS
+ 			if (Picture_IsLumpPNG((UINT8 *)&patchlump, lumplength))
+@@ -1401,6 +1404,7 @@ static texture_t *R_ParseTexture(boolean actuallyLoadTexture)
+ 			// Allocate memory for a zero-patch texture. Obviously, we'll be adding patches momentarily.
+ 			resultTexture = (texture_t *)Z_Calloc(sizeof(texture_t),PU_STATIC,NULL);
+ 			M_Memcpy(resultTexture->name, newTextureName, 8);
++			resultTexture->hash = quickncasehash(newTextureName, 8);
+ 			resultTexture->width = newTextureWidth;
+ 			resultTexture->height = newTextureHeight;
+ 			resultTexture->type = TEXTURETYPE_COMPOSITE;
+@@ -1627,19 +1631,22 @@ void R_ClearTextureNumCache(boolean btell)
+ INT32 R_CheckTextureNumForName(const char *name)
+ {
+ 	INT32 i;
++	UINT32 hash;
+ 
+ 	// "NoTexture" marker.
+ 	if (name[0] == '-')
+ 		return 0;
+ 
++	hash = quickncasehash(name, 8);
++
+ 	for (i = 0; i < tidcachelen; i++)
+-		if (!strncasecmp(tidcache[i].name, name, 8))
++		if (tidcache[i].hash == hash && !strncasecmp(tidcache[i].name, name, 8))
+ 			return tidcache[i].id;
+ 
+ 	// Need to parse the list backwards, so textures loaded more recently are used in lieu of ones loaded earlier
+ 	//for (i = 0; i < numtextures; i++) <- old
+ 	for (i = (numtextures - 1); i >= 0; i--) // <- new
+-		if (!strncasecmp(textures[i]->name, name, 8))
++		if (textures[i]->hash == hash && !strncasecmp(textures[i]->name, name, 8))
+ 		{
+ 			tidcachelen++;
+ 			Z_Realloc(tidcache, tidcachelen * sizeof(*tidcache), PU_STATIC, &tidcache);
+@@ -1648,6 +1655,7 @@ INT32 R_CheckTextureNumForName(const char *name)
+ #ifndef ZDEBUG
+ 			CONS_Debug(DBG_SETUP, "texture #%s: %s\n", sizeu1(tidcachelen), tidcache[tidcachelen-1].name);
+ #endif
++			tidcache[tidcachelen-1].hash = hash;
+ 			tidcache[tidcachelen-1].id = i;
+ 			return i;
+ 		}
+diff --git a/src/r_textures.h b/src/r_textures.h
+index 95796d89c..69b59426a 100644
+--- a/src/r_textures.h
++++ b/src/r_textures.h
+@@ -54,6 +54,7 @@ typedef struct
+ {
+ 	// Keep name for switch changing, etc.
+ 	char name[8];
++	UINT32 hash;
+ 	UINT8 type; // TEXTURETYPE_
+ 	INT16 width, height;
+ 	boolean holes;
+diff --git a/src/w_wad.c b/src/w_wad.c
+index e49e0ce82..9c631da65 100644
+--- a/src/w_wad.c
++++ b/src/w_wad.c
+@@ -361,6 +361,7 @@ static lumpinfo_t* ResGetLumpsStandalone (FILE* handle, UINT16* numlumps, const
+ 	lumpinfo->size = ftell(handle);
+ 	fseek(handle, 0, SEEK_SET);
+ 	strcpy(lumpinfo->name, lumpname);
++	lumpinfo->hash = quickncasehash(lumpname, 8);
+ 
+ 	// Allocate the lump's long name.
+ 	lumpinfo->longname = Z_Malloc(9 * sizeof(char), PU_STATIC, NULL);
+@@ -459,6 +460,7 @@ static lumpinfo_t* ResGetLumpsWad (FILE* handle, UINT16* nlmp, const char* filen
+ 			lump_p->compression = CM_NOCOMPRESSION;
+ 		memset(lump_p->name, 0x00, 9);
+ 		strncpy(lump_p->name, fileinfo->name, 8);
++		lump_p->hash = quickncasehash(lump_p->name, 8);
+ 
+ 		// Allocate the lump's long name.
+ 		lump_p->longname = Z_Malloc(9 * sizeof(char), PU_STATIC, NULL);
+@@ -634,6 +636,7 @@ static lumpinfo_t* ResGetLumpsZip (FILE* handle, UINT16* nlmp)
+ 
+ 		memset(lump_p->name, '\0', 9); // Making sure they're initialized to 0. Is it necessary?
+ 		strncpy(lump_p->name, trimname, min(8, dotpos - trimname));
++		lump_p->hash = quickncasehash(lump_p->name, 8);
+ 
+ 		lump_p->longname = Z_Calloc(dotpos - trimname + 1, PU_STATIC, NULL);
+ 		strlcpy(lump_p->longname, trimname, dotpos - trimname + 1);
+@@ -1225,12 +1228,14 @@ UINT16 W_CheckNumForNamePwad(const char *name, UINT16 wad, UINT16 startlump)
+ {
+ 	UINT16 i;
+ 	static char uname[8 + 1];
++	UINT32 hash;
+ 
+ 	if (!TestValidLump(wad,0))
+ 		return INT16_MAX;
+ 
+ 	strlcpy(uname, name, sizeof uname);
+ 	strupr(uname);
++	hash = quickncasehash(uname, 8);
+ 
+ 	//
+ 	// scan forward
+@@ -1241,7 +1246,7 @@ UINT16 W_CheckNumForNamePwad(const char *name, UINT16 wad, UINT16 startlump)
+ 	{
+ 		lumpinfo_t *lump_p = wadfiles[wad]->lumpinfo + startlump;
+ 		for (i = startlump; i < wadfiles[wad]->numlumps; i++, lump_p++)
+-			if (!strncmp(lump_p->name, uname, sizeof(uname) - 1))
++			if (lump_p->hash == hash && !strncmp(lump_p->name, uname, sizeof(uname) - 1))
+ 				return i;
+ 	}
+ 
+@@ -1444,15 +1449,20 @@ lumpnum_t W_CheckNumForLongName(const char *name)
+ // TODO: Make it search through cache first, maybe...?
+ lumpnum_t W_CheckNumForMap(const char *name)
+ {
++	UINT32 hash = quickncasehash(name, 8);
+ 	UINT16 lumpNum, end;
+ 	UINT32 i;
++	lumpinfo_t *p;
+ 	for (i = numwadfiles - 1; i < numwadfiles; i--)
+ 	{
+ 		if (wadfiles[i]->type == RET_WAD)
+ 		{
+ 			for (lumpNum = 0; lumpNum < wadfiles[i]->numlumps; lumpNum++)
+-				if (!strncmp(name, (wadfiles[i]->lumpinfo + lumpNum)->name, 8))
++			{
++				p = wadfiles[i]->lumpinfo + lumpNum;
++				if (p->hash == hash && !strncmp(name, p->name, 8))
+ 					return (i<<16) + lumpNum;
++			}
+ 		}
+ 		else if (W_FileHasFolders(wadfiles[i]))
+ 		{
+@@ -1463,8 +1473,11 @@ lumpnum_t W_CheckNumForMap(const char *name)
+ 				continue;
+ 			// Now look for the specified map.
+ 			for (; lumpNum < end; lumpNum++)
+-				if (!strnicmp(name, (wadfiles[i]->lumpinfo + lumpNum)->name, 8))
++			{
++				p = wadfiles[i]->lumpinfo + lumpNum;
++				if (p->hash == hash && !strnicmp(name, p->name, 8))
+ 					return (i<<16) + lumpNum;
++			}
+ 		}
+ 	}
+ 	return LUMPERROR;
+diff --git a/src/w_wad.h b/src/w_wad.h
+index a41ba1724..9b8a66aa7 100644
+--- a/src/w_wad.h
++++ b/src/w_wad.h
+@@ -67,6 +67,7 @@ typedef struct
+ 	unsigned long position; // filelump_t filepos
+ 	unsigned long disksize; // filelump_t size
+ 	char name[9];           // filelump_t name[] e.g. "LongEntr"
++	UINT32 hash;
+ 	char *longname;         //                   e.g. "LongEntryName"
+ 	char *fullname;         //                   e.g. "Folder/Subfolder/LongEntryName.extension"
+ 	char *diskpath;         // path to the file  e.g. "/usr/games/srb2/Addon/Folder/Subfolder/LongEntryName.extension"
+-- 
+GitLab
+
+
+From 37add34b9c729b21e624e22d64159073c9258e25 Mon Sep 17 00:00:00 2001
+From: James R <justsomejames2@gmail.com>
+Date: Thu, 27 Jan 2022 00:28:36 -0800
+Subject: [PATCH 5/5] Update texturecache user when reallocating
+
+---
+ src/r_textures.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/r_textures.c b/src/r_textures.c
+index 645a57b9b..3a7611365 100644
+--- a/src/r_textures.c
++++ b/src/r_textures.c
+@@ -1039,8 +1039,20 @@ static void R_AllocateTextures(INT32 add)
+ 	// Create translation table for global animation.
+ 	Z_Realloc(texturetranslation, (newtextures + 1) * sizeof(*texturetranslation), PU_STATIC, &texturetranslation);
+ 
+-	for (i = numtextures; i < newtextures; ++i)
++	for (i = 0; i < numtextures; ++i)
++	{
++		// R_FlushTextureCache relies on the user for
++		// Z_Free, texturecache has been reallocated so the
++		// user is now garbage memory.
++		Z_SetUser(texturecache[i],
++				(void**)&texturecache[i]);
++	}
++
++	while (i < newtextures)
++	{
+ 		texturetranslation[i] = i;
++		i++;
++	}
+ }
+ 
+ static INT32 R_DefineTextures(INT32 i, UINT16 w)
+-- 
+GitLab
+

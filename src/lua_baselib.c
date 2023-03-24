@@ -658,6 +658,8 @@ static int lib_pRemoveMobj(lua_State *L)
 		return LUA_ErrInvalid(L, "mobj_t");
 	if (th->player)
 		return luaL_error(L, "Attempt to remove player mobj with P_RemoveMobj.");
+	if (inside_spawn) //reverbal: prevent srb2 from crashing if attempting to remove mobj in MobjSpawn.
+		return luaL_error(L, "Attempt to remove spawning mobj with P_RemoveMobj.");
 	P_RemoveMobj(th);
 	return 0;
 }
@@ -1963,6 +1965,8 @@ static int lib_pKillMobj(lua_State *L)
 	INLEVEL
 	if (!target)
 		return LUA_ErrInvalid(L, "mobj_t");
+	if (inside_spawn)  //reverbal: prevent srb2 from crashing if attempting to remove mobj in MobjSpawn.
+		return luaL_error(L, "Attempt to remove spawning mobj with P_KillMobj.");
 	if (!lua_isnone(L, 2) && lua_isuserdata(L, 2))
 		inflictor = *((mobj_t **)luaL_checkudata(L, 2, META_MOBJ));
 	if (!lua_isnone(L, 3) && lua_isuserdata(L, 3))

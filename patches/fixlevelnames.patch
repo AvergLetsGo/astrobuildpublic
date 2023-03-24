@@ -1,0 +1,78 @@
+From e64775c8670b5d6e541027400e4ea744cac0698e Mon Sep 17 00:00:00 2001
+From: spherallic <spherallic@gmail.com>
+Date: Wed, 2 Feb 2022 23:16:12 +0100
+Subject: [PATCH] Check V_ThinStringWidth instead of strlen for level platter
+ names.
+
+---
+ src/m_menu.c | 20 +++++++++++---------
+ src/m_menu.h |  4 ++--
+ 2 files changed, 13 insertions(+), 11 deletions(-)
+
+diff --git a/src/m_menu.c b/src/m_menu.c
+index 3c1d8d7ca..367ee1590 100644
+--- a/src/m_menu.c
++++ b/src/m_menu.c
+@@ -5408,11 +5408,13 @@ static boolean M_PrepareLevelPlatter(INT32 gt, boolean nextmappick)
+ 
+ 					if (actnum)
+ 						sprintf(mapname, "%s %d", mapheaderinfo[headingIterate]->lvlttl, actnum);
++					else if (V_ThinStringWidth(mapheaderinfo[headingIterate]->lvlttl, 0) <= 80)
++						strlcpy(mapname, mapheaderinfo[headingIterate]->lvlttl, 22);
+ 					else
+-						strcpy(mapname, mapheaderinfo[headingIterate]->lvlttl);
+-
+-					if (strlen(mapname) >= 17)
+-						strcpy(mapname+17-3, "...");
++					{
++						strlcpy(mapname, mapheaderinfo[headingIterate]->lvlttl, 15);
++						strcat(mapname, "...");
++					}
+ 
+ 					strcpy(levelselect.rows[row].mapnames[col], (const char *)mapname);
+ 				}
+@@ -5747,7 +5749,7 @@ static void M_DrawLevelPlatterMap(UINT8 row, UINT8 col, INT32 x, INT32 y, boolea
+ 		? 159 : 63));
+ 
+ 	if (strlen(levelselect.rows[row].mapnames[col]) > 6) // "AERIAL GARDEN" vs "ACT 18" - "THE ACT" intentionally compressed
+-		V_DrawThinString(x, y+50, (highlight ? V_YELLOWMAP : 0), levelselect.rows[row].mapnames[col]);
++		V_DrawThinString(x, y+50+1, (highlight ? V_YELLOWMAP : 0), levelselect.rows[row].mapnames[col]);
+ 	else
+ 		V_DrawString(x, y+50, (highlight ? V_YELLOWMAP : 0), levelselect.rows[row].mapnames[col]);
+ }
+@@ -8748,12 +8750,12 @@ static void M_ReadSavegameInfo(UINT32 slot)
+ 
+ 	if(!mapheaderinfo[(fake-1) & 8191])
+ 		savegameinfo[slot].levelname[0] = '\0';
++	else if (V_ThinStringWidth(mapheaderinfo[(fake-1) & 8191]->lvlttl, 0) <= 78)
++		strlcpy(savegameinfo[slot].levelname, mapheaderinfo[(fake-1) & 8191]->lvlttl, 22);
+ 	else
+ 	{
+-		strlcpy(savegameinfo[slot].levelname, mapheaderinfo[(fake-1) & 8191]->lvlttl, 17+1);
+-
+-		if (strlen(mapheaderinfo[(fake-1) & 8191]->lvlttl) >= 17)
+-			strcpy(savegameinfo[slot].levelname+17-3, "...");
++		strlcpy(savegameinfo[slot].levelname, mapheaderinfo[(fake-1) & 8191]->lvlttl, 15);
++		strcat(savegameinfo[slot].levelname, "...");
+ 	}
+ 
+ 	savegameinfo[slot].gamemap = fake;
+diff --git a/src/m_menu.h b/src/m_menu.h
+index ba9c326a0..e495f7f7c 100644
+--- a/src/m_menu.h
++++ b/src/m_menu.h
+@@ -389,9 +389,9 @@ typedef struct
+ // level select platter
+ typedef struct
+ {
+-	char header[22+5]; // mapheader_t lvltttl max length + " ZONE"
++	char header[22+5]; // mapheader_t lvlttl max length + " ZONE"
+ 	INT32 maplist[3];
+-	char mapnames[3][17+1];
++	char mapnames[3][22]; // lvlttl max length
+ 	boolean mapavailable[4]; // mapavailable[3] == wide or not
+ } levelselectrow_t;
+ 
+-- 
+GitLab
+

@@ -1,0 +1,102 @@
+From 793e8a3663c9fac1a498693f89fd05561203c77a Mon Sep 17 00:00:00 2001
+From: 256nil <thingstuffet@gmail.com>
+Date: Sat, 2 Jul 2022 03:33:47 +0300
+Subject: [PATCH] Minor changes to prevent SIGSEGVs
+
+---
+ src/lua_baselib.c | 4 ++++
+ src/lua_hook.h    | 1 +
+ src/m_menu.c      | 4 +++-
+ src/p_mobj.c      | 6 +++++-
+ 4 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/lua_baselib.c b/src/lua_baselib.c
+index 120ab671e..e3577096c 100644
+--- a/src/lua_baselib.c
++++ b/src/lua_baselib.c
+@@ -656,6 +656,8 @@ static int lib_pRemoveMobj(lua_State *L)
+ 		return LUA_ErrInvalid(L, "mobj_t");
+ 	if (th->player)
+ 		return luaL_error(L, "Attempt to remove player mobj with P_RemoveMobj.");
++	if (inside_spawn) //reverbal: prevent srb2 from crashing if attempting to remove mobj in MobjSpawn.
++		return luaL_error(L, "Attempt to remove spawning mobj with P_RemoveMobj.");
+ 	P_RemoveMobj(th);
+ 	return 0;
+ }
+@@ -1961,6 +1963,8 @@ static int lib_pKillMobj(lua_State *L)
+ 	INLEVEL
+ 	if (!target)
+ 		return LUA_ErrInvalid(L, "mobj_t");
++	if (inside_spawn)  //reverbal: prevent srb2 from crashing if attempting to remove mobj in MobjSpawn.
++		return luaL_error(L, "Attempt to remove spawning mobj with P_KillMobj.");
+ 	if (!lua_isnone(L, 2) && lua_isuserdata(L, 2))
+ 		inflictor = *((mobj_t **)luaL_checkudata(L, 2, META_MOBJ));
+ 	if (!lua_isnone(L, 3) && lua_isuserdata(L, 3))
+diff --git a/src/lua_hook.h b/src/lua_hook.h
+index fc6a5f4ee..b22677708 100644
+--- a/src/lua_hook.h
++++ b/src/lua_hook.h
+@@ -113,6 +113,7 @@ ENUM (STRING_HOOK);
+ #define LUA_HUDHOOK(type) LUA_HookHUD(HUD_HOOK(type))
+ 
+ extern boolean hook_cmd_running;
++extern boolean inside_spawn;
+ 
+ void LUA_HookVoid(int hook);
+ void LUA_HookHUD(int hook);
+diff --git a/src/m_menu.c b/src/m_menu.c
+index 5b85f65df..d3955c3ed 100644
+--- a/src/m_menu.c
++++ b/src/m_menu.c
+@@ -2663,7 +2663,9 @@ static boolean MIT_SetCurBackground(UINT32 menutype, INT32 level, INT32 *retval,
+ 			curbghide = true;
+ 		else
+ 		{
+-			strncpy(curbgname, defaultname, 9);
++			// reverbal: [valgrind|memcheck]: use memcpy instead of strncpy?
++			//strncpy(curbgname, defaultname, 9);
++			memcpy(curbgname, defaultname, 9);
+ 			curbgxspeed = (gamestate == GS_TIMEATTACK) ? 0 : titlescrollxspeed;
+ 			curbgyspeed = (gamestate == GS_TIMEATTACK) ? 0 : titlescrollyspeed;
+ 		}
+diff --git a/src/p_mobj.c b/src/p_mobj.c
+index 17be0300a..df43155df 100644
+--- a/src/p_mobj.c
++++ b/src/p_mobj.c
+@@ -35,6 +35,8 @@
+ #include "f_finale.h"
+ #include "m_cond.h"
+ 
++boolean inside_spawn; //reverbal: used to prevent srb2 from crashing if attempting to remove mobj in MobjSpawn.
++
+ static CV_PossibleValue_t CV_BobSpeed[] = {{0, "MIN"}, {4*FRACUNIT, "MAX"}, {0, NULL}};
+ consvar_t cv_movebob = CVAR_INIT ("movebob", "1.0", CV_FLOAT|CV_SAVE, CV_BobSpeed, NULL);
+ 
+@@ -1918,7 +1920,7 @@ void P_XYMovement(mobj_t *mo)
+ 			mo->flags &= ~MF_STICKY; //Don't check again!
+ 
+ 			// Check for hit against sky here
+-			if (P_CheckSkyHit(mo))
++			if (!mo->player && P_CheckSkyHit(mo)) //reverbal: do NOT remove a player object!!!
+ 			{
+ 				// Hack to prevent missiles exploding
+ 				// against the sky.
+@@ -10470,6 +10472,7 @@ static fixed_t P_DefaultMobjShadowScale (mobj_t *thing)
+ //
+ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
+ {
++	inside_spawn = true; // reverbal: We are inside MobjSpawn
+ 	const mobjinfo_t *info = &mobjinfo[type];
+ 	SINT8 sc = -1;
+ 	state_t *st;
+@@ -10871,6 +10874,7 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
+ 	if (CheckForReverseGravity && !(mobj->flags & MF_NOBLOCKMAP))
+ 		P_CheckGravity(mobj, false);
+ 
++	inside_spawn = false; // reverbal: We are no longer inside MobjSpawn
+ 	return mobj;
+ }
+ 
+-- 
+GitLab
+

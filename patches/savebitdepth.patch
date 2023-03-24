@@ -1,0 +1,25 @@
+From 98aafc6056ad0ef89731ebbc18591684a8460ec3 Mon Sep 17 00:00:00 2001
+From: SteelT <steeltitanium1@gmail.com>
+Date: Thu, 3 Feb 2022 18:44:46 -0500
+Subject: [PATCH] Don't force bit depth to 8-bit when setting default video
+ mode
+
+---
+ src/screen.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/screen.c b/src/screen.c
+index 770f1c802..af044ffe1 100644
+--- a/src/screen.c
++++ b/src/screen.c
+@@ -390,7 +390,6 @@ void SCR_SetDefaultMode(void)
+ 	// remember the default screen size
+ 	CV_SetValue(&cv_scr_width, vid.width);
+ 	CV_SetValue(&cv_scr_height, vid.height);
+-	CV_SetValue(&cv_scr_depth, vid.bpp*8);
+ }
+ 
+ // Change fullscreen on/off according to cv_fullscreen
+-- 
+GitLab
+

@@ -2739,7 +2739,9 @@ static boolean MIT_SetCurBackground(UINT32 menutype, INT32 level, INT32 *retval,
 			curbghide = true;
 		else
 		{
-			strncpy(curbgname, defaultname, 9);
+			// reverbal: [valgrind|memcheck]: use memcpy instead of strncpy?
+			//strncpy(curbgname, defaultname, 9);
+			memcpy(curbgname, defaultname, 9);
 			curbgxspeed = (gamestate == GS_TIMEATTACK) ? 0 : titlescrollxspeed;
 			curbgyspeed = (gamestate == GS_TIMEATTACK) ? 0 : titlescrollyspeed;
 		}
@@ -5530,11 +5532,13 @@ static boolean M_PrepareLevelPlatter(INT32 gt, boolean nextmappick)
 
 					if (actnum)
 						sprintf(mapname, "%s %d", mapheaderinfo[headingIterate]->lvlttl, actnum);
+					else if (V_ThinStringWidth(mapheaderinfo[headingIterate]->lvlttl, 0) <= 80)
+						strlcpy(mapname, mapheaderinfo[headingIterate]->lvlttl, 22);
 					else
-						strcpy(mapname, mapheaderinfo[headingIterate]->lvlttl);
-
-					if (strlen(mapname) >= 17)
-						strcpy(mapname+17-3, "...");
+					{
+						strlcpy(mapname, mapheaderinfo[headingIterate]->lvlttl, 15);
+						strcat(mapname, "...");
+					}
 
 					strcpy(levelselect.rows[row].mapnames[col], (const char *)mapname);
 				}
@@ -5869,7 +5873,7 @@ static void M_DrawLevelPlatterMap(UINT8 row, UINT8 col, INT32 x, INT32 y, boolea
 		? 159 : 63));
 
 	if (strlen(levelselect.rows[row].mapnames[col]) > 6) // "AERIAL GARDEN" vs "ACT 18" - "THE ACT" intentionally compressed
-		V_DrawThinString(x, y+50, (highlight ? V_YELLOWMAP : 0), levelselect.rows[row].mapnames[col]);
+		V_DrawThinString(x, y+50+1, (highlight ? V_YELLOWMAP : 0), levelselect.rows[row].mapnames[col]);
 	else
 		V_DrawString(x, y+50, (highlight ? V_YELLOWMAP : 0), levelselect.rows[row].mapnames[col]);
 }
@@ -8915,12 +8919,12 @@ static void M_ReadSavegameInfo(UINT32 slot)
 
 	if(!mapheaderinfo[(fake-1) & 8191])
 		savegameinfo[slot].levelname[0] = '\0';
+	else if (V_ThinStringWidth(mapheaderinfo[(fake-1) & 8191]->lvlttl, 0) <= 78)
+		strlcpy(savegameinfo[slot].levelname, mapheaderinfo[(fake-1) & 8191]->lvlttl, 22);
 	else
 	{
-		strlcpy(savegameinfo[slot].levelname, mapheaderinfo[(fake-1) & 8191]->lvlttl, 17+1);
-
-		if (strlen(mapheaderinfo[(fake-1) & 8191]->lvlttl) >= 17)
-			strcpy(savegameinfo[slot].levelname+17-3, "...");
+		strlcpy(savegameinfo[slot].levelname, mapheaderinfo[(fake-1) & 8191]->lvlttl, 15);
+		strcat(savegameinfo[slot].levelname, "...");
 	}
 
 	savegameinfo[slot].gamemap = fake;

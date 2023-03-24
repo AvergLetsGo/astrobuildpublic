@@ -1,0 +1,51 @@
+From 8c1991d6746a38462adb7a9e073afb3751304726 Mon Sep 17 00:00:00 2001
+From: aiire <1050-aiire@users.noreply.git.do.srb2.org>
+Date: Fri, 4 Mar 2022 02:57:45 +0000
+Subject: [PATCH 1/2] added FF_FULLBRIGHT to S_IVSP
+
+---
+ src/info.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/info.c b/src/info.c
+index 20f0dfe4f..d21c881de 100644
+--- a/src/info.c
++++ b/src/info.c
+@@ -2941,7 +2941,7 @@ state_t states[NUMSTATES] =
+ 	{SPR_SSPK, FF_ANIMATE, -1, {NULL}, 1, 2, S_NULL},   // S_THUNDERCOIN_SPARK
+ 
+ 	// Invincibility Sparkles
+-	{SPR_IVSP, FF_ANIMATE, 32, {NULL}, 31, 1, S_NULL},   // S_IVSP
++	{SPR_IVSP, FF_ANIMATE|FF_FULLBRIGHT, 32, {NULL}, 31, 1, S_NULL},   // S_IVSP
+ 
+ 	// Super Sonic Spark
+ 	{SPR_SSPK,   FF_FULLBRIGHT, 2, {NULL}, 0, 0, S_SSPK2}, // S_SSPK1
+-- 
+GitLab
+
+
+From 6040f97dd583f64b6611751a13101b47ab1a2420 Mon Sep 17 00:00:00 2001
+From: aiire <1050-aiire@users.noreply.git.do.srb2.org>
+Date: Fri, 4 Mar 2022 23:25:25 +0000
+Subject: [PATCH 2/2] added FF_FULLBRIGHT to S_THUNDERCOIN_SPARK
+
+---
+ src/info.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/info.c b/src/info.c
+index d21c881de..73cf22184 100644
+--- a/src/info.c
++++ b/src/info.c
+@@ -2938,7 +2938,7 @@ state_t states[NUMSTATES] =
+ 	{SPR_NULL,                           0, 15*2, {NULL}, 0, 0, S_ZAPSB2 }, // S_ZAPSB11
+ 
+ 	// Thunder spark
+-	{SPR_SSPK, FF_ANIMATE, -1, {NULL}, 1, 2, S_NULL},   // S_THUNDERCOIN_SPARK
++	{SPR_SSPK, FF_ANIMATE|FF_FULLBRIGHT, -1, {NULL}, 1, 2, S_NULL},   // S_THUNDERCOIN_SPARK
+ 
+ 	// Invincibility Sparkles
+ 	{SPR_IVSP, FF_ANIMATE|FF_FULLBRIGHT, 32, {NULL}, 31, 1, S_NULL},   // S_IVSP
+-- 
+GitLab
+

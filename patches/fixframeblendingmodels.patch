@@ -1,0 +1,37 @@
+From 3581d06012de1eda92ae4b7ea49c3698244bef1c Mon Sep 17 00:00:00 2001
+From: Jaime Ita Passos <jp6781615@gmail.com>
+Date: Fri, 8 Apr 2022 16:01:41 -0300
+Subject: [PATCH] Fix frame blend flags not working with 3D models
+
+---
+ src/hardware/hw_md2.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/hardware/hw_md2.c b/src/hardware/hw_md2.c
+index d546e2f7f..e765656ca 100644
+--- a/src/hardware/hw_md2.c
++++ b/src/hardware/hw_md2.c
+@@ -1346,12 +1346,18 @@ boolean HWR_DrawModel(gl_vissprite_t *spr)
+ 		//if (tics > durs)
+ 			//durs = tics;
+ 
++		INT32 blendmode;
++		if (spr->mobj->frame & FF_BLENDMASK)
++			blendmode = ((spr->mobj->frame & FF_BLENDMASK) >> FF_BLENDSHIFT) + 1;
++		else
++			blendmode = spr->mobj->blendmode;
++
+ 		if (spr->mobj->frame & FF_TRANSMASK)
+-			Surf.PolyFlags = HWR_SurfaceBlend(spr->mobj->blendmode, (spr->mobj->frame & FF_TRANSMASK)>>FF_TRANSSHIFT, &Surf);
++			Surf.PolyFlags = HWR_SurfaceBlend(blendmode, (spr->mobj->frame & FF_TRANSMASK)>>FF_TRANSSHIFT, &Surf);
+ 		else
+ 		{
+ 			Surf.PolyColor.s.alpha = (spr->mobj->flags2 & MF2_SHADOW) ? 0x40 : 0xff;
+-			Surf.PolyFlags = HWR_GetBlendModeFlag(spr->mobj->blendmode);
++			Surf.PolyFlags = HWR_GetBlendModeFlag(blendmode);
+ 		}
+ 
+ 		// don't forget to enable the depth test because we can't do this
+-- 
+GitLab
+

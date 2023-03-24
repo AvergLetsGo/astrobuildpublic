@@ -1,0 +1,41 @@
+From bc44e792eb5371fae6ba149adfa4d1dea9ae73a8 Mon Sep 17 00:00:00 2001
+From: Eidolon <furyhunter600@gmail.com>
+Date: Mon, 17 Oct 2022 22:36:29 -0500
+Subject: [PATCH] win32: Add dpi aware manifest config
+
+---
+ src/win32/Srb2win.rc           | 1 +
+ src/win32/srb2win.exe.manifest | 6 ++++++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/src/win32/Srb2win.rc b/src/win32/Srb2win.rc
+index 83948ac81..2236beca1 100644
+--- a/src/win32/Srb2win.rc
++++ b/src/win32/Srb2win.rc
+@@ -2,6 +2,7 @@
+ //
+ #include "resource.h"
+ #include "winver.h"
++#include "winuser.h"
+ 
+ #define APSTUDIO_READONLY_SYMBOLS
+ /////////////////////////////////////////////////////////////////////////////
+diff --git a/src/win32/srb2win.exe.manifest b/src/win32/srb2win.exe.manifest
+index d3b8355cb..f9ba6c814 100644
+--- a/src/win32/srb2win.exe.manifest
++++ b/src/win32/srb2win.exe.manifest
+@@ -1,5 +1,11 @@
+ <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+ <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
++  <application xmlns="urn:schemas-microsoft-com:asm.v3">
++    <windowsSettings>
++      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
++      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
++    </windowsSettings>
++  </application>
+   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+     <security>
+       <requestedPrivileges>
+-- 
+GitLab
+

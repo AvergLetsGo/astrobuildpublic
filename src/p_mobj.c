@@ -35,6 +35,8 @@
 #include "f_finale.h"
 #include "m_cond.h"
 
+boolean inside_spawn; //reverbal: used to prevent srb2 from crashing if attempting to remove mobj in MobjSpawn.
+
 static CV_PossibleValue_t CV_BobSpeed[] = {{0, "MIN"}, {4*FRACUNIT, "MAX"}, {0, NULL}};
 consvar_t cv_movebob = CVAR_INIT ("movebob", "1.0", CV_FLOAT|CV_SAVE, CV_BobSpeed, NULL);
 
@@ -1918,7 +1920,7 @@ void P_XYMovement(mobj_t *mo)
 			mo->flags &= ~MF_STICKY; //Don't check again!
 
 			// Check for hit against sky here
-			if (P_CheckSkyHit(mo))
+			if (!mo->player && P_CheckSkyHit(mo)) //reverbal: do NOT remove a player object!!!
 			{
 				// Hack to prevent missiles exploding
 				// against the sky.
@@ -10412,6 +10414,7 @@ static fixed_t P_DefaultMobjShadowScale (mobj_t *thing)
 	switch (thing->type)
 	{
 		case MT_PLAYER:
+		case MT_METALSONIC_RACE:
 		case MT_ROLLOUTROCK:
 
 		case MT_EGGMOBILE4_MACE:
@@ -10456,6 +10459,27 @@ static fixed_t P_DefaultMobjShadowScale (mobj_t *thing)
 
 			return 2*FRACUNIT/3;
 
+		case MT_FLICKY_01:
+		case MT_FLICKY_02:
+		case MT_FLICKY_03:
+		case MT_FLICKY_04:
+		case MT_FLICKY_05:
+		case MT_FLICKY_06:
+		case MT_FLICKY_07:
+		case MT_FLICKY_08:
+		case MT_FLICKY_09:
+		case MT_FLICKY_10:
+		case MT_FLICKY_11:
+		case MT_FLICKY_12:
+		case MT_FLICKY_13:
+		case MT_FLICKY_14:
+		case MT_FLICKY_15:
+		case MT_FLICKY_16:
+		case MT_SECRETFLICKY_01:
+		case MT_SECRETFLICKY_02:
+
+			return FRACUNIT;
+
 		default:
 
 			if (thing->flags & (MF_ENEMY|MF_BOSS))
@@ -10470,6 +10494,7 @@ static fixed_t P_DefaultMobjShadowScale (mobj_t *thing)
 //
 mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 {
+	inside_spawn = true; // reverbal: We are inside MobjSpawn
 	const mobjinfo_t *info = &mobjinfo[type];
 	SINT8 sc = -1;
 	state_t *st;
@@ -10477,7 +10502,7 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 
 	if (type == MT_NULL)
 	{
-#if 0		
+#if 0
 #ifdef PARANOIA
 		I_Error("Tried to spawn MT_NULL\n");
 #endif
@@ -10876,6 +10901,7 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 	mobj->new_y = y;
 	mobj->new_z = mobj->z;
 
+	inside_spawn = false; // reverbal: We are no longer inside MobjSpawn
 	return mobj;
 }
 
