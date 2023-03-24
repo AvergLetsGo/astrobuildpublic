@@ -21,3 +21,6 @@ See [SRB2 Wiki/Source code compiling](http://wiki.srb2.org/wiki/Source_code_comp
 
 ## Disclaimer
 Sonic Team Junior is in no way affiliated with SEGA or Sonic Team. We do not claim ownership of any of SEGA's intellectual property used in SRB2.
+
+## The differences
+There is now a "patches" folder in this repo, containing all of the commits pulled from the github and edits made by me.
